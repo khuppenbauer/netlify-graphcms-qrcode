@@ -1,0 +1,1 @@
+# netlify-graphcms-qrcode
