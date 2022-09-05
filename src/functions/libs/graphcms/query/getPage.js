@@ -7,6 +7,7 @@ module.exports = async () => {
         qrCode {
           image {
             id
+            sha1
           }
         }
       }

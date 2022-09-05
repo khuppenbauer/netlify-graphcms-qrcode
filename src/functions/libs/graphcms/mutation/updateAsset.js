@@ -4,19 +4,21 @@ module.exports = async () => {
   return gql`
     mutation UpdateAsset(
       $id: ID!,
-      $lightColor: Hex,
       $darkColor: Hex,
+      $lightColor: Hex,
+      $sha1: String,
     ) {
       updateAsset(
         where: { id: $id }
         data: {
           active: true
-          lightColor: {
-            hex: $lightColor
-          }
           darkColor: {
             hex: $darkColor
           }
+          lightColor: {
+            hex: $lightColor
+          }
+          sha1: $sha1
         }
       ) {
         id  

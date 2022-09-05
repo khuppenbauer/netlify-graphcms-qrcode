@@ -4,6 +4,7 @@ const FormData = require('form-data');
 const fs = require('fs');
 const { GraphQLClient } = require('graphql-request');
 const QRCode = require('qrcode');
+const crypto = require('crypto');
 
 const graphcmsMutation = require('./libs/graphcms/mutation');
 const graphcmsQuery = require('./libs/graphcms/query');
@@ -92,12 +93,13 @@ const uploadAsset = async (fileName) => {
   return res.data;
 };
 
-const updateAsset = async (id, lightColor, darkColor) => {
+const updateAsset = async (id, lightColor, darkColor, sha1) => {
   const mutation = await graphcmsMutation.updateAsset();
   const mutationVariables = {
     id,
     lightColor: rgb2hex(lightColor.rgba),
     darkColor: rgb2hex(darkColor.rgba),
+    sha1,
   };
   return graphcms.request(mutation, mutationVariables);
 };
@@ -118,8 +120,7 @@ const deactivateAsset = async (asset) => {
   return graphcms.request(mutation, mutationVariables);
 };
 
-const updateQrCode = async (id, name, slug, qrCode, assetId) => {
-  const { shortCode, width, lightColor, darkColor, id: qrCodeId } = qrCode;
+const updateQrCode = async (id, name, slug, assetId, width, shortCode, lightColor, darkColor, qrCodeId) => {
   const mutation = await graphcmsMutation.upsertPageConnectQrCode();
   const mutationVariables = {
     id,
@@ -150,22 +151,51 @@ exports.handler = async (event) => {
     const { operation, data } = body;
     const apiOperation = await isApiOperation(operation, data);
     if (apiOperation) {
-      return null;
+      return {
+        statusCode: 200,
+        body: 'API Operation',
+      };
     }
     const { id, name, slug, qrCode } = data;
-    const { shortCode, width, lightColor, darkColor } = qrCode;
+    if (!qrCode) {
+      return {
+        statusCode: 200,
+        body: 'QrCode Missing',
+      };
+    }
+    const sha1 = crypto
+      .createHash('sha1')
+      .update(JSON.stringify(qrCode))
+      .digest('hex');
+    const page = await getPage(id);
+    const { qrCode: existingQrCode } = page;
+    if (existingQrCode) {
+      const { image: existingImage } = existingQrCode;
+      if (existingImage) {
+        const { sha1: existingSha1, id: imageId } = existingImage;
+        if (existingSha1 === sha1) {
+          return {
+            statusCode: 200,
+            body: 'Duplicate'
+          };
+        }
+        if (imageId) {
+          await deactivateAsset(imageId);
+        }
+      }
+    }
+    const width = qrCode.width || 160;
+    const shortCode = qrCode.shortCode || slug.replace('/', '-');
+    const lightColor = qrCode.lightColor || { rgba: { r: 255, g: 255, b: 255 }};
+    const darkColor = qrCode.darkColor || { rgba: { r: 0, g: 0, b: 0 }};
     const url = `${domain}/${slug}`;
     const fileName = `/tmp/${shortCode}-${width}.png`
     await createQrCode(fileName, url, width, lightColor, darkColor);
     const asset = await uploadAsset(fileName);
     const { id: assetId } = asset;
-    await updateAsset(assetId, lightColor, darkColor);
+    await updateAsset(assetId, lightColor, darkColor, sha1);
     await publishAsset(assetId);
-    const page = await getPage(id);
-    if (page.qrCode && page.qrCode.image && page.qrCode.image.id) {
-      await deactivateAsset(page.qrCode.image.id);
-    } 
-    await updateQrCode(id, name, slug, qrCode, assetId);
+    await updateQrCode(id, name, slug, assetId, width, shortCode, lightColor, darkColor, qrCode.id);
     await publishPage(id);
     return {
       statusCode: 200,
