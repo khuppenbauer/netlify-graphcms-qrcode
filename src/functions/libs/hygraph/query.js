@@ -1,7 +1,7 @@
 const { gql } = require('graphql-request');
 
-module.exports = async () => {
-  return gql`
+export const getPage = async () =>
+  gql`
     query getPage($id: ID!) {
       page(where: { id: $id }) {
         qrCode {
@@ -13,4 +13,14 @@ module.exports = async () => {
       }
     }
   `;
-};
+
+export const getUser = async () =>
+  gql`
+    query getUser($id: ID!) {
+      user(where: { id: $id }) {
+        id
+        name
+        kind
+      }
+    }
+  `;
